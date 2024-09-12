@@ -1,0 +1,73 @@
+from pyspark.sql.types import StructType,StructField,IntegerType,StringType,DoubleType
+# Unmount the directory if it is already mounted
+if len(dbutils.fs.mounts()) > 0:
+    existing_mounts = spark.createDataFrame(dbutils.fs.mounts())
+    if existing_mounts.filter(existing_mounts.mountPoint == '/mnt/azutest1').count() > 0:
+        dbutils.fs.unmount('/mnt/azutest1')
+
+# Mount the directory
+configs = {
+    "fs.azure.account.auth.type": "OAuth",
+    "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+    "fs.azure.account.oauth2.client.id": "c50c7966-497d-4909-8bf6-3eadb7111dc7",
+    "fs.azure.account.oauth2.client.secret": 'secretid',
+    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/f0a8af0f-e316-4dc1-b53c-7705e33daefc/oauth2/token"
+}
+
+dbutils.fs.mount(
+    source="abfss://azutest@azutest1.dfs.core.windows.net/",
+    mount_point="/mnt/azutest1",
+    extra_configs=configs
+)
+
+display(dbutils.fs.ls("/mnt/azutest1"))
+race_df= spark.read.format("csv") \
+    .option("header",True)\
+        .schema(circuits_schema)\
+            .load("/mnt/azutest1/azutest_raw_data")
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType, DoubleType
+
+circuits_schema = StructType(fields=[StructField("circuitId", IntegerType(), True),
+                                    StructField("circuitRef", StringType(), True), 
+                                    StructField("name", StringType(), True), 
+                                    StructField("location", StringType(), True),
+                                    StructField("country", StringType(), True), 
+                                    StructField("lat", DoubleType(), True), 
+                                    StructField("lng", DoubleType(), True), 
+                                    StructField("alt", IntegerType(), True), 
+                                    ])
+race_df= spark.read.format("csv") \
+    .option("header",True)\
+        .schema(circuits_schema)\
+            .load("/mnt/azutest1/azutest_raw_data")
+display(race_df)
+
+display(circuits_df)
+from pyspark.sql.functions import col
+circuits_selected_df= circuits_df.select(col("circuitId").alias("circuit_Id"), 
+                                         col("circuitRef").alias("circuit_Ref"), 
+                                         col("name").alias("name"), 
+                                         col("location").alias("location"),
+                                         col("country").alias("country"), 
+                                         col("lat").alias("lattitude"), 
+                                         col("lng").alias("longitude"),
+                                         col("alt").alias("altitude"))
+
+display(circuits_selected_df)
+
+
+circuits_renamed_df = circuits_df.withColumnRenamed("circuitId", "circuit_Id") \
+                                .withColumnRenamed("circuitRef", "circuit_Ref") \
+                                .withColumnRenamed("name", "name") \
+                                .withColumnRenamed("location", "location") \
+                                .withColumnRenamed("country", "country") \
+                                .withColumnRenamed("lat", "lattitude") \
+                                .withColumnRenamed("lng", "longitude") \
+                                .withColumnRenamed("alt", "altitude")
+
+from pyspark.sql.functions import current_timestamp, lit
+
+circuitts_final_df = circuits_renamed_df.withColumn("ingestion_date",current_timestamp())\
+    .withColumn("env",lit("prod"))
+
+circuitts_final_df.write.parquet("/mnt/azutest1/azutest_transformed_data/circuits")
