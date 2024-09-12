@@ -1,0 +1,51 @@
+from pyspark.sql.types import IntegerType,StructType,DoubleType,StringType,StructField,BooleanType
+constructors_schema= "constructor_id INT, constructor_ref , name  STRING, nationality STRING, url STRING"
+if len(dbutils.fs.mounts()) > 0:
+    existing_mount = spark.createDataFrame(dbutils.fs.mounts())
+    if existing_mount.filter(existing_mount.mountPoint == '/mnt/azutest1').count() > 0:
+        dbutils.fs.unmount('/mnt/azutest1')
+        # Mount the directory
+configs = {
+    "fs.azure.account.auth.type": "OAuth",
+    "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+    "fs.azure.account.oauth2.client.id": "client_id",
+    "fs.azure.account.oauth2.client.secret": 'secretcode',
+    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/f0a8af0f-e316-4dc1-b53c-7705e33daefc/oauth2/token"
+}
+
+dbutils.fs.mount(
+    source="abfss://azutest@azutest1.dfs.core.windows.net/",
+    mount_point="/mnt/azutest1",
+    extra_configs=configs
+)
+constructors_df_inferred = spark.read.json("/mnt/azutest1/azutest_raw_data/constructors.json")
+constructors_df_inferred.printSchema()
+display(constructors_df_inferred)
+from pyspark.sql.types import StructType, StructField, IntegerType, StringType
+
+# Define the schema based on the inferred schema
+constructors_schema = StructType([
+    StructField("constructorId", IntegerType(), True),
+    StructField("constructorRef", StringType(), True),
+    StructField("name", StringType(), True),
+    StructField("nationality", StringType(), True),
+    StructField("url", StringType(), True)
+])
+
+# Read the JSON file with the defined schema
+constructors_df = spark.read.schema(constructors_schema).json("/mnt/azutest1/azutest_raw_data/constructors.json")
+
+# Display the DataFrame
+display(constructors_df)
+from pyspark.sql.functions import col
+constructors_dropped_df = constructors_df.drop(col("url"))
+display(constructors_dropped_df)
+from pyspark.sql.functions import current_timestamp
+
+constructors_final_df = constructors_dropped_df.withColumnRenamed("constructorId", "constructor_Id") \
+                                              .withColumnRenamed("constructorRef", "constructor_ref") \
+                                              .withColumn("ingestion_date", current_timestamp())
+display(constructors_final_df)
+constructors_final_df.write.mode("overwrite").parquet("/mnt/azutest1/azutest_transformed_data/constructors")
+df=spark.read.parquet("/mnt/azutest1/azutest_transformed_data/constructors")
+display(df)
