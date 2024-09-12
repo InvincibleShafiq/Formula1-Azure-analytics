@@ -1,0 +1,43 @@
+from pyspark.sql.types import StructType, StructField, StringType, IntegerType,DoubleType,DateType
+name_schema=StructType(fields=[StructField("forename",StringType(),True),
+                                StructField("surname",StringType(),True)])
+drivers_schema= StructType(fields=[StructField("driver_id",IntegerType(),False),
+                                   StructField("driverRef",StringType(),True),
+                                   StructField("number",IntegerType(),True),
+                                   StructField("code",StringType(),True),
+                                   StructField("name",name_schema),
+                                   StructField("dob",DateType(),True),
+                                   StructField("nationality",StringType(),True),
+                                   StructField("url",StringType(),True)])
+mounts = dbutils.fs.mounts()
+if len(list(filter(lambda mount: mount.mountPoint == "/mnt/azutest1", mounts))) > 0:
+    dbutils.fs.unmount("/mnt/azutest1")
+if len(dbutils.fs.mounts()) > 0:
+    existing_mounts = spark.createDataFrame(dbutils.fs.mounts())
+    if existing_mounts.filter(existing_mounts.mountPoint == '/mnt/azutest1').count() > 0:
+        dbutils.fs.unmount('/mnt/azutest1')
+# Unmount the directory if it is already mounted
+if len(dbutils.fs.mounts()) > 0:
+    existing_mounts = spark.createDataFrame(dbutils.fs.mounts())
+    if existing_mounts.filter(existing_mounts.mountPoint == '/mnt/tokyoolympic').count() > 0:
+        dbutils.fs.unmount('/mnt/tokyoolympic')
+
+# Mount the directory
+configs = {
+    "fs.azure.account.auth.type": "OAuth",
+    "fs.azure.account.oauth.provider.type": "org.apache.hadoop.fs.azurebfs.oauth2.ClientCredsTokenProvider",
+    "fs.azure.account.oauth2.client.id": "clientID",
+    "fs.azure.account.oauth2.client.secret": 'secretnumber',
+    "fs.azure.account.oauth2.client.endpoint": "https://login.microsoftonline.com/f0a8af0f-e316-4dc1-b53c-7705e33daefc/oauth2/token"
+}
+
+dbutils.fs.mount(
+    source="abfss://tokyo-olympic-data@tokyoolympicdatashafiq.dfs.core.windows.net/",
+    mount_point="/mnt/tokyoolympic",
+    extra_configs=configs)
+from pyspark.sql.functions import concat, col, lit, current_timestamp
+
+driver_with_columns_df = drivers_df_inferred.withColumnRenamed("driverid", "driver_id") \
+                                 .withColumnRenamed("driveRef", "driver_ref") \
+                                 .withColumn("ingestion_date", current_timestamp()) \
+                                 .withColumn("name", concat(col("name.forename"), lit("'"), col("name.surname")))
